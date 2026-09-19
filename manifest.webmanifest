@@ -2,9 +2,9 @@
   "name": "StockBot",
   "short_name": "StockBot",
   "description": "Inventory Made Simple",
-  "start_url": "./",
+  "start_url": "./?app=1",
   "scope": "./",
-  "display": "standalone",
+  "display": "browser",
   "background_color": "#061d2b",
   "theme_color": "#061d2b",
   "icons": [
