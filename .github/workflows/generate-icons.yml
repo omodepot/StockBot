@@ -1,0 +1,27 @@
+name: Generate iOS App Icons
+on:
+  push:
+    paths:
+      - 'stockbot-icon.svg'
+      - '.github/workflows/generate-icons.yml'
+permissions:
+  contents: write
+jobs:
+  icons:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install renderer
+        run: sudo apt-get update && sudo apt-get install -y librsvg2-bin
+      - name: Render PNG icons
+        run: |
+          rsvg-convert -w 180 -h 180 stockbot-icon.svg -o apple-touch-icon.png
+          rsvg-convert -w 192 -h 192 stockbot-icon.svg -o icon-192.png
+          rsvg-convert -w 512 -h 512 stockbot-icon.svg -o icon-512.png
+      - name: Commit icons
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apple-touch-icon.png icon-192.png icon-512.png
+          git diff --cached --quiet || git commit -m "Generate StockBot PNG app icons"
+          git push
