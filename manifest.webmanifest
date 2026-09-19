@@ -1,0 +1,18 @@
+{
+  "name": "StockBot",
+  "short_name": "StockBot",
+  "description": "Inventory Made Simple",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#061d2b",
+  "theme_color": "#061d2b",
+  "icons": [
+    {
+      "src": "./stockbot-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
