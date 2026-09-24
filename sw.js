@@ -1,4 +1,4 @@
-const CACHE='stockbot-v21-voice';
+const CACHE='stockbot-v22-voice-only';
 self.addEventListener('install',e=>self.skipWaiting());
 self.addEventListener('activate',e=>e.waitUntil((async()=>{for(const k of await caches.keys())if(k!==CACHE)await caches.delete(k);await self.clients.claim()})()));
 self.addEventListener('fetch',e=>{
@@ -8,7 +8,7 @@ self.addEventListener('fetch',e=>{
         const r=await fetch(e.request,{cache:'no-store'});let html=await r.text();
         if(!html.includes('scanner-v12.js'))html=html.replace('</body>','<script src="./scanner-v12.js?v=20-camera-lock"></script></body>');
         if(!html.includes('enhancements-v13.js'))html=html.replace('</body>','<script src="./enhancements-v13.js?v=20"></script></body>');
-        if(!html.includes('voice-v14.js'))html=html.replace('</body>','<script src="./voice-v14.js?v=21-server-transcribe"></script></body>');
+        if(!html.includes('voice-v14.js'))html=html.replace('</body>','<script src="./voice-v14.js?v=22-voice-only"></script></body>');
         return new Response(html,{status:r.status,statusText:r.statusText,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store, max-age=0'}});
       }catch(_){return caches.match('./')}
     })());return;
