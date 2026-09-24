@@ -1,4 +1,4 @@
-const CACHE='stockbot-v12';
+const CACHE='stockbot-v13';
 self.addEventListener('install',e=>{self.skipWaiting()});
 self.addEventListener('activate',e=>e.waitUntil((async()=>{for(const k of await caches.keys())if(k!==CACHE)await caches.delete(k);await self.clients.claim()})()));
 self.addEventListener('fetch',e=>{
@@ -7,9 +7,10 @@ self.addEventListener('fetch',e=>{
       try{
         const r=await fetch(e.request,{cache:'no-store'});let html=await r.text();
         if(!html.includes('scanner-v12.js'))html=html.replace('</body>','<script src="./scanner-v12.js?v=12"></script></body>');
+        if(!html.includes('enhancements-v13.js'))html=html.replace('</body>','<script src="./enhancements-v13.js?v=13"></script></body>');
         return new Response(html,{status:r.status,statusText:r.statusText,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'}});
       }catch(_){return caches.match('./')}
     })());return;
   }
-  e.respondWith(fetch(e.request).then(r=>{const x=r.clone();caches.open(CACHE).then(c=>c.put(e.request,x));return r}).catch(()=>caches.match(e.request)))
+  e.respondWith(fetch(e.request,{cache:'no-store'}).then(r=>{const x=r.clone();caches.open(CACHE).then(c=>c.put(e.request,x));return r}).catch(()=>caches.match(e.request)))
 });
