@@ -1,61 +1,11 @@
-/* StockBot iPhone live scanner v12 — Quagga2 camera pipeline */
-(()=>{
-  const BUILD='2026-09-24-ios-live-v12';
-  let active=false,target='lookup',quaggaLoaded=false;
-  const $id=id=>document.getElementById(id);
-  const valid=c=>{c=String(c||'').replace(/\D/g,'');return [8,12,13,14].includes(c.length)?c:''};
-  async function loadQuagga(){
-    if(window.Quagga){quaggaLoaded=true;return}
-    await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.4/dist/quagga.min.js';s.onload=resolve;s.onerror=()=>reject(new Error('Scanner engine could not load'));document.head.appendChild(s)});
-    quaggaLoaded=!!window.Quagga;if(!quaggaLoaded)throw new Error('Scanner engine unavailable');
-  }
-  async function stop(){
-    active=false;
-    try{window.Quagga?.offDetected(onDetected)}catch(_){}
-    try{window.Quagga?.stop()}catch(_){}
-    document.querySelectorAll('#scanVideo video').forEach(v=>{try{v.srcObject?.getTracks?.().forEach(t=>t.stop())}catch(_){}});
-    $id('scanModal')?.classList.add('hidden');
-  }
-  async function onDetected(data){
-    if(!active)return;
-    const code=valid(data?.codeResult?.code);if(!code)return;
-    active=false;if(navigator.vibrate)navigator.vibrate(80);
-    await stop();
-    try{await handleScannedUPC(code,target)}catch(e){console.error(e)}
-  }
-  async function start(nextTarget='lookup'){
-    target=nextTarget;window.scanTarget=target;
-    const modal=$id('scanModal'),box=$id('scanVideo'),status=$id('scanStatus');
-    if(!modal||!box)return;
-    modal.classList.remove('hidden');
-    if(status)status.textContent='Opening rear camera…';
-    const old=$id('scanPreview');if(old)old.style.display='none';
-    document.querySelectorAll('#scanVideo video, #scanVideo canvas').forEach(n=>{if(n.id!=='scanPreview')n.remove()});
-    try{
-      await loadQuagga();
-      await new Promise((resolve,reject)=>{
-        Quagga.init({
-          inputStream:{name:'Live',type:'LiveStream',target:box,constraints:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080},aspectRatio:{ideal:1.7777778}},area:{top:'18%',right:'4%',left:'4%',bottom:'18%'}},
-          locator:{patchSize:'medium',halfSample:true},
-          numOfWorkers:navigator.hardwareConcurrency?Math.min(4,navigator.hardwareConcurrency):2,
-          frequency:12,
-          decoder:{readers:['upc_reader','upc_e_reader','ean_reader','ean_8_reader']},
-          locate:true
-        },err=>err?reject(err):resolve());
-      });
-      active=true;Quagga.offDetected(onDetected);Quagga.onDetected(onDetected);Quagga.start();
-      const v=box.querySelector('video');if(v){v.setAttribute('playsinline','');v.setAttribute('webkit-playsinline','');v.muted=true;try{await v.play()}catch(_){}}
-      if(status)status.textContent='Camera ready — center the barcode in the green box';
-    }catch(err){console.error('StockBot scanner v12',err);if(status)status.textContent='Camera error: '+(err?.message||err);if(typeof toast==='function')toast('Camera error: '+(err?.message||err));}
-  }
-  function wire(){
-    const b=$id('scanBtn');if(b)b.onclick=()=>start('lookup');
-    const c=$id('closeScan');if(c)c.onclick=stop;
-    const fallback=$id('photoFallback');if(fallback){fallback.style.display='none'}
-    const status=$id('scanStatus');if(status&&status.textContent.includes('Starting'))status.textContent='Ready to open rear camera';
-    document.querySelectorAll('#scanNewUPC').forEach(b=>b.onclick=()=>start('editor'));
-  }
-  const obs=new MutationObserver(wire);obs.observe(document.documentElement,{childList:true,subtree:true});
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire);else wire();
-  window.StockBotScannerV12={start,stop,build:BUILD};
+/* StockBot scanner v25 — native iPhone preview, one camera owner */
+(()=>{'use strict';
+let stream=null,running=false,target='lookup',raf=0,detector=null,zx=null,controls=null;
+const $=id=>document.getElementById(id);const valid=x=>{x=String(x||'').replace(/\D/g,'');return [8,12,13,14].includes(x.length)?x:''};
+async function stop(){running=false;cancelAnimationFrame(raf);try{controls?.stop()}catch(_){}controls=null;zx=null;try{stream?.getTracks().forEach(t=>t.stop())}catch(_){}stream=null;const v=$('scanPreview');if(v){try{v.pause()}catch(_){}v.srcObject=null;v.style.display='block'}$('scanModal')?.classList.add('hidden')}
+async function hit(code){code=valid(code);if(!code||!running)return;running=false;if(navigator.vibrate)navigator.vibrate(80);await stop();await window.handleScannedUPC(code,target)}
+async function detectLoop(v){if(!running)return;try{if(detector&&v.readyState>=2){const a=await detector.detect(v);if(a?.[0]?.rawValue){await hit(a[0].rawValue);return}}}catch(_){}raf=requestAnimationFrame(()=>detectLoop(v))}
+async function start(t='lookup'){target=t;window.scanTarget=t;await stop();const modal=$('scanModal'),v=$('scanPreview'),status=$('scanStatus');if(!modal||!v)return;modal.classList.remove('hidden');v.style.display='block';if(status)status.textContent='Opening rear camera…';try{stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}});v.srcObject=stream;v.muted=true;v.playsInline=true;v.setAttribute('playsinline','');await v.play();await new Promise((res,rej)=>{if(v.videoWidth>0)return res();let n=0;const f=()=>{if(v.videoWidth>0)return res();if(++n>60)return rej(new Error('Camera opened but preview did not start'));requestAnimationFrame(f)};f()});running=true;if(status)status.textContent='Camera ready — center the UPC in the green box';if('BarcodeDetector'in window){try{detector=new BarcodeDetector({formats:['upc_a','upc_e','ean_13','ean_8']});detectLoop(v);return}catch(_){detector=null}}if(window.ZXingBrowser){zx=new ZXingBrowser.BrowserMultiFormatReader();controls=await zx.decodeFromVideoElement(v,(result)=>{if(result)hit(result.getText?result.getText():result.text)});return}throw new Error('Barcode reader unavailable')}catch(e){console.error('scanner v25',e);if(status)status.textContent='Camera error: '+(e?.message||e);try{toast('Camera error: '+(e?.message||e))}catch(_){}}}
+function wire(){const b=$('scanBtn');if(b)b.onclick=()=>start('lookup');const c=$('closeScan');if(c)c.onclick=stop;const p=$('photoFallback');if(p)p.style.display='';document.querySelectorAll('#scanNewUPC').forEach(b=>b.onclick=()=>start('editor'))}
+new MutationObserver(wire).observe(document.documentElement,{childList:true,subtree:true});if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire);else wire();window.StockBotScannerV25={start,stop};
 })();
