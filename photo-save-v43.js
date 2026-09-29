@@ -1,38 +1,39 @@
-/* StockBot v43 — persistent inventory photos only. Scanner/product lookup untouched. */
+/* StockBot v44 — persistent inventory photos. Scanner/product lookup untouched. */
 (()=>{'use strict';
-const $=id=>document.getElementById(id);let pending=[];let busy=false;
-function capture(e){if(e.target?.id!=='photos')return;pending=Array.from(e.target.files||[]);window.pendingPhotos=pending;}
+const $=id=>document.getElementById(id);let pending=[];let busy=false,lastEditorKey='';
+function capture(e){if(e.target?.id!=='photos')return;const files=Array.from(e.target.files||[]);if(files.length){pending.push(...files);window.pendingPhotos=pending.slice();} }
 document.addEventListener('change',capture,true);
-async function upload(itemId){
- if(!itemId||!pending.length||busy)return {count:0}; busy=true;
- try{
-  const {data:{session}}=await sb.auth.getSession(); if(!session)throw new Error('Please sign in again');
-  let count=0;
-  const {data:existing}=await sb.from('inventory_photos').select('id').eq('inventory_item_id',itemId);
-  let order=(existing||[]).length;
-  for(const file of pending){
-   const ext=((file.name||'photo.jpg').split('.').pop()||'jpg').replace(/[^a-z0-9]/gi,'').toLowerCase()||'jpg';
-   const path=session.user.id+'/'+itemId+'/'+Date.now()+'-'+Math.random().toString(36).slice(2)+'.'+ext;
-   const {error:upErr}=await sb.storage.from('inventory-photos').upload(path,file,{contentType:file.type||'image/jpeg',upsert:false});
-   if(upErr)throw upErr;
-   const {error:rowErr}=await sb.from('inventory_photos').insert({owner_id:session.user.id,inventory_item_id:itemId,storage_path:path,sort_order:order++});
-   if(rowErr){try{await sb.storage.from('inventory-photos').remove([path])}catch(_){};throw rowErr}
-   count++;
-  }
-  pending=[];window.pendingPhotos=[];const input=$('photos');if(input)input.value='';
-  return {count};
+async function session(){const {data}=await sb.auth.getSession();if(!data.session)throw new Error('Please sign in again');return data.session}
+async function resolveItemId(){
+ const s=await session();const upc=$('pupc')?.value?.trim()||'';const name=$('pname')?.value?.trim()||'';
+ let q=sb.from('inventory_items').select('id,upc,product_name,created_at').eq('owner_id',s.user.id).order('created_at',{ascending:false}).limit(10);
+ if(upc)q=q.eq('upc',upc);else if(name)q=q.eq('product_name',name);else return null;
+ const {data,error}=await q;if(error)throw error;return data?.[0]?.id||null;
+}
+async function uploadFiles(itemId,files){
+ if(!itemId||!files.length||busy)return 0;busy=true;
+ try{const s=await session();const {data:existing,error:exErr}=await sb.from('inventory_photos').select('id').eq('inventory_item_id',itemId);if(exErr)throw exErr;let order=(existing||[]).length,count=0;
+  for(const file of files){const ext=((file.name||'photo.jpg').split('.').pop()||'jpg').replace(/[^a-z0-9]/gi,'').toLowerCase()||'jpg';const path=s.user.id+'/'+itemId+'/'+Date.now()+'-'+Math.random().toString(36).slice(2)+'.'+ext;
+   const {error:upErr}=await sb.storage.from('inventory-photos').upload(path,file,{contentType:file.type||'image/jpeg',upsert:false});if(upErr)throw upErr;
+   const {error:rowErr}=await sb.from('inventory_photos').insert({owner_id:s.user.id,inventory_item_id:itemId,storage_path:path,sort_order:order++});if(rowErr){await sb.storage.from('inventory-photos').remove([path]);throw rowErr}count++;}
+  return count;
  }finally{busy=false}
 }
-function hook(){
- const save=$('save');if(!save||save.dataset.photoV43)return;save.dataset.photoV43='1';
- save.addEventListener('click',()=>{
-  if(!pending.length)return;
-  const files=pending.slice();
-  let tries=0;
-  const wait=async()=>{tries++;const id=window.current?.id||window.currentItem?.id||window.current?.inventory_item_id;if(id){pending=files;try{const r=await upload(id);if(r.count)toast(r.count+' photo'+(r.count===1?'':'s')+' saved to cloud')}catch(e){console.error('photo save',e);toast('Photo save failed: '+(e.message||e))}return}if(tries<30)setTimeout(wait,200);else toast('Item saved, but photos could not be attached')};
-  setTimeout(wait,100);
- },true);
+async function signed(path){const {data,error}=await sb.storage.from('inventory-photos').createSignedUrl(path,3600);return error?'':data?.signedUrl||''}
+async function showSaved(){
+ if(!$('photos')||!$('product')?.classList.contains('editorOpen'))return;let id;try{id=await resolveItemId()}catch(_){return}if(!id)return;
+ const key=id+':'+($('pupc')?.value||'');if(key===lastEditorKey&&$('savedPhotoCloud'))return;lastEditorKey=key;
+ const {data,error}=await sb.from('inventory_photos').select('*').eq('inventory_item_id',id).order('sort_order');if(error)return;
+ let box=$('savedPhotoCloud');if(!box){box=document.createElement('div');box.id='savedPhotoCloud';box.style.marginTop='8px';const input=$('photos');input.parentElement.appendChild(box)}
+ if(!data?.length){box.innerHTML='';return}const urls=[];for(const p of data){const u=await signed(p.storage_path);if(u)urls.push(u)}box.innerHTML=urls.length?'<div class="muted" style="margin:6px 0">Saved photos</div><div class="photoPreview">'+urls.map(u=>'<img src="'+u+'" alt="Saved inventory photo">').join('')+'</div>':'';
 }
-new MutationObserver(hook).observe(document.documentElement,{childList:true,subtree:true});hook();
-window.StockBotPhotosV43={upload,getPending:()=>pending.slice()};
+async function savePhotosAfterCore(files){
+ if(!files.length)return;let id=null;for(let i=0;i<20&&!id;i++){await new Promise(r=>setTimeout(r,i?200:350));try{id=await resolveItemId()}catch(e){if(i===19)throw e}}
+ if(!id)throw new Error('Could not match photos to the saved inventory item');const count=await uploadFiles(id,files);pending=pending.filter(f=>!files.includes(f));window.pendingPhotos=pending.slice();if(count){toast(count+' photo'+(count===1?'':'s')+' saved to cloud');lastEditorKey='';await showSaved()}
+}
+function hook(){
+ const save=$('save');if(save&&!save.dataset.photoV44){save.dataset.photoV44='1';save.addEventListener('click',()=>{const files=pending.slice();if(!files.length)return;setTimeout(()=>savePhotosAfterCore(files).catch(e=>{console.error('photo save',e);toast('Photo save failed: '+(e.message||e))}),0)},true)}
+ showSaved();
+}
+new MutationObserver(()=>setTimeout(hook,0)).observe(document.documentElement,{childList:true,subtree:true});hook();window.StockBotPhotosV44={showSaved,resolveItemId};
 })();
