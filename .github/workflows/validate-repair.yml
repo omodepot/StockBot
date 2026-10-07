@@ -1,0 +1,21 @@
+name: Validate StockBot Repair
+on:
+  push:
+    branches: [stockbot-intake-repair]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract and syntax-check inline app JavaScript
+        run: |
+          python3 - <<'PY'
+          import re
+          s=open('index.html').read()
+          blocks=re.findall(r'<script>([\\s\\S]*?)</script>',s)
+          open('/tmp/app.js','w').write('\\n'.join(blocks))
+          PY
+          node --check /tmp/app.js
