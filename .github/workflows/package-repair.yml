@@ -1,0 +1,27 @@
+name: Package StockBot Repair
+on:
+  push:
+    branches: [stockbot-intake-repair]
+    paths: ['.github/workflows/package-repair.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build upload folder
+        run: |
+          mkdir -p StockBot-stockbot-intake-repair
+          shopt -s dotglob
+          for f in *; do
+            [ "$f" = "StockBot-stockbot-intake-repair" ] && continue
+            cp -R "$f" StockBot-stockbot-intake-repair/
+          done
+          rm -rf StockBot-stockbot-intake-repair/.git
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StockBot-stockbot-intake-repair
+          path: StockBot-stockbot-intake-repair
+          include-hidden-files: true
