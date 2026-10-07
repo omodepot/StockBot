@@ -2,7 +2,7 @@ name: Package StockBot Repair
 on:
   push:
     branches: [stockbot-intake-repair]
-    paths: ['.github/workflows/package-repair.yml']
+    paths: ['**']
   workflow_dispatch:
 permissions:
   contents: read
