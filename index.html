@@ -71,7 +71,7 @@ $('barcodeCapture').onchange=async e=>{
  }catch(err){console.error('Photo barcode decode',err);toast('UPC not detected in that photo. Try the live scanner.')}
  finally{if(url)URL.revokeObjectURL(url)}
 };
-async function handleScannedUPC(code,target){code=String(code).replace(/\D/g,'');toast('UPC '+code+' scanned');if(target==='editor'&&$('pupc')){$('pupc').value=code;await autofillProduct(code)}else{$('lookup').value=code;let local=items.find(i=>i.upc===code);if(local)openItem(local.id);else newItem(code,'');setTimeout(()=>autofillProduct(code),100)}}
+async function handleScannedUPC(code,target){code=String(code).replace(/\D/g,'');toast('UPC '+code+' scanned');if(target==='sale'){window.StockBotInventoryV27?.handleSaleScan(code);return}if(target==='editor'&&$('pupc')){$('pupc').value=code;await autofillProduct(code)}else{$('lookup').value=code;let local=items.find(i=>i.upc===code);if(local)openItem(local.id);else newItem(code,'');setTimeout(()=>autofillProduct(code),100)}}
 async function autofillProduct(code){
  if(!code)return;
  const nameEl=$('pname');if(nameEl&&!nameEl.value)nameEl.placeholder='Looking up product…';
