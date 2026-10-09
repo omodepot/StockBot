@@ -42,7 +42,7 @@ async function refresh(){
     }
     const title=x.listing_title||x.product_name||'Marketplace listing';
     const caption=[title,x.brand?'Brand: '+x.brand:'',x.category?'Category: '+x.category:'',x.listing_description||x.condition_notes||'',x.condition_grade?'Condition: '+x.condition_grade:'', 'Price: $'+Number(x.listing_price||x.suggested_price).toFixed(2), x.upc?'UPC: '+x.upc:''].filter(Boolean).join('\\n\\n');
-    const payload={version:1,source:'stockbot',sourceId:x.id,updatedAt:x.listing_updated_at||null,sentAt:new Date().toISOString(),title,caption,platforms:['facebook'],mediaUrls};
+    const payload={version:1,source:'stockbot',sourceId:x.id,updatedAt:x.listing_updated_at||null,sentAt:new Date().toISOString(),targetClientName:'Deal Drop Michigan',title,caption,platforms:['facebook'],mediaUrls};
     const destination='https://omnisocial.pages.dev/#stockbot='+encodeURIComponent(JSON.stringify(payload));
     popup.opener=null;popup.location.replace(destination);
    }catch(error){
