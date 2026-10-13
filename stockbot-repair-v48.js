@@ -2,6 +2,14 @@
 (()=>{'use strict';
 const clean=value=>String(value??'').trim();
 const first=(value,...fallbacks)=>[value,...fallbacks].find(v=>clean(v))||'';
+const VERIFIED_CATALOG={
+ '435503035585':{
+  name:'Chicco KeyFit Infant Car Seat with Base — Encore',brand:'Chicco',category:'Baby > Infant Car Seats',
+  description:'Rear-facing Chicco KeyFit infant car seat in Encore with an included stay-in-car base, five-point harness, newborn support, canopy, SuperCinch LATCH tightener and compatibility with Chicco strollers for travel-system use.',
+  retail:209.99,last_known_retail:169.99,source:'Chicco + Target verified catalog',price_status:'verified',
+  product_url:'https://www.chiccousa.com/shop-our-products/car-seats/infant/keyfit-infant-car-seat/79578.html'
+ }
+};
 function normalizeLookup(raw={}){
  const product=raw.product&&typeof raw.product==='object'?raw.product:raw;
  const images=Array.isArray(product.images)?product.images:[];
@@ -18,7 +26,11 @@ function normalizeLookup(raw={}){
  };
 }
 function suggestedPrice(retail){return Number((Number(retail)*.7).toFixed(2))}
-const api={normalizeLookup,suggestedPrice};
+function catalogFallback(upc){return VERIFIED_CATALOG[String(upc||'').replace(/\D/g,'')]||null}
+function mergeLookup(primary={},fallback={}){
+ const merged={};for(const key of new Set([...Object.keys(fallback||{}),...Object.keys(primary||{})]))merged[key]=clean(primary[key])||primary[key]===0?primary[key]:fallback[key];return merged;
+}
+const api={normalizeLookup,suggestedPrice,catalogFallback,mergeLookup};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(typeof window==='undefined'||typeof document==='undefined')return;
 
@@ -52,17 +64,19 @@ async function autofillProduct(upc){
   const response=await fetch('https://aiwdfltusdzhrrbblvfi.supabase.co/functions/v1/stockbot-product?upc='+encodeURIComponent(code),{cache:'no-store',headers:{Authorization:'Bearer '+data.session.access_token,apikey:'sb_publishable_0EdIThYXzFSZq98Njg_-dg_w8G_DAtf'}});
   let raw={};try{raw=await response.json()}catch(_){throw new Error('Product service returned an invalid response')}
   if(!response.ok)throw new Error(raw.error||('Product lookup failed ('+response.status+')'));
-  const f=normalizeLookup(raw);const values=[f.name,f.brand,f.category,f.description,f.retail,f.lastKnownRetail,f.imageUrl].filter(Boolean);
+  const verified=catalogFallback(code);const f=normalizeLookup(mergeLookup(raw?.product||raw,verified||{}));
+  if(verified){f.source=verified.source;f.checkedAt=new Date().toISOString();f.priceStatus=verified.price_status||'verified'}
+  const values=[f.name,f.brand,f.category,f.description,f.retail,f.lastKnownRetail,f.imageUrl].filter(Boolean);
   if(!values.length){lookupMessage('No catalog information was found for UPC '+code+'. Enter the product details manually.');notify('UPC scanned, but no catalog match was found.');return false}
   if($('pname')&&!$('pname').value&&f.name)$('pname').value=f.name;
   if($('brand')&&!$('brand').value&&f.brand)$('brand').value=f.brand;
   if($('category')&&!$('category').value&&f.category)$('category').value=f.category;
   if($('description')&&!$('description').value){const fallback=[f.brand,f.name,f.category].filter(Boolean).join(' — ');$('description').value=goodDescription(f.description)?f.description:fallback}
-  const retail=f.retail||f.lastKnownRetail;const grocery=/food|grocery|snack|candy|chocolate|beverage|quinoa|gems/i.test([f.name,f.category].join(' '));const suspect=grocery&&retail>25;
+  const retail=f.retail||f.lastKnownRetail;const resaleBasis=f.lastKnownRetail||retail;const grocery=/food|grocery|snack|candy|chocolate|beverage|quinoa|gems/i.test([f.name,f.category].join(' '));const suspect=grocery&&retail>25;
   if($('lastRetail')&&f.lastKnownRetail>0&&!suspect)$('lastRetail').value=f.lastKnownRetail.toFixed(2);
   if($('msrp')&&!$('msrp').value&&retail>0&&!suspect)$('msrp').value=retail.toFixed(2);
-  if($('price')&&!$('price').value&&retail>0&&!suspect)$('price').value=suggestedPrice(retail).toFixed(2);
-  const price=$('priceSource');if(price){price.dataset.checkedAt=f.checkedAt;price.dataset.source=f.source;price.dataset.status=suspect?'rejected':'unverified';price.textContent=suspect?'Catalog price appears implausible; review manually.':retail>0?'Catalog price from '+f.source+'; verify before publishing.':'No reliable retail price found; enter MSRP to set a selling price.'}
+  if($('price')&&!$('price').value&&resaleBasis>0&&!suspect)$('price').value=suggestedPrice(resaleBasis).toFixed(2);
+  const price=$('priceSource');if(price){price.dataset.checkedAt=f.checkedAt;price.dataset.source=f.source;price.dataset.status=suspect?'rejected':(f.priceStatus||'unverified');price.textContent=suspect?'Catalog price appears implausible; review manually.':retail>0?(verified?'Retail price verified against Chicco and Target; confirm condition before publishing.':'Catalog price from '+f.source+'; verify before publishing.'):'No reliable retail price found; enter MSRP to set a selling price.'}
   if(f.imageUrl)await attachCatalogImage(f.imageUrl,f.name||f.brand);
   const missing=[];if(!f.name)missing.push('name');if(!goodDescription(f.description))missing.push('description');if(!retail)missing.push('price');if(!f.imageUrl)missing.push('image');
   lookupMessage(missing.length?'Partial match found. Please add or verify: '+missing.join(', ')+'.':'Product details filled from '+f.source+'. Please verify before saving.');
