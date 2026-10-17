@@ -13,7 +13,7 @@ async function refresh(){
  queue=data||[];
  if(!queue.length){wrap.textContent='No inventory items yet.';return;}
  wrap.innerHTML='<div class="muted">'+queue.length+' items · '+queue.filter(x=>x.listing_approval==='approved').length+' approved</div>'+queue.map(x=>
- '<div class="card" style="margin:10px 0;padding:12px"><b>'+esc(x.listing_title||x.product_name)+'</b><div class="muted">'+esc(x.brand||'Brand missing')+' · UPC '+esc(x.upc||'—')+' · Available '+Number(x.available_qty||0)+' · Price $'+Number(x.listing_price||x.suggested_price||0).toFixed(2)+'</div><div class="muted">Retail: '+esc(x.price_status||'unverified')+' · Approval: '+esc(x.listing_approval||'draft')+'</div><div class="row" style="margin-top:8px"><button class="btn" data-action="edit" data-id="'+esc(x.id)+'">Edit listing</button><button class="btn" data-action="review" data-id="'+esc(x.id)+'">Needs changes</button><button class="btn primary" data-action="approve" data-id="'+esc(x.id)+'" '+(!eligible(x)?'disabled':'')+'>Approve</button><button class="btn" data-action="draft" data-id="'+esc(x.id)+'">Draft</button><button class="btn primary" data-action="publish" data-id="'+esc(x.id)+'" '+(x.listing_approval!=='approved'||!eligible(x)?'disabled':'')+'>Publish to Facebook ↗</button><button class="btn" data-action="omni" data-id="'+esc(x.id)+'" '+(x.listing_approval!=='approved'||!eligible(x)?'disabled':'')+'>Send to Omni Social</button></div></div>'
+ '<div class="card" style="margin:10px 0;padding:12px"><b>'+esc(x.listing_title||x.product_name)+'</b><div class="muted">'+esc(x.brand||'Brand missing')+' · UPC '+esc(x.upc||'—')+' · Available '+Number(x.available_qty||0)+' · Price $'+Number(x.listing_price||x.suggested_price||0).toFixed(2)+'</div><div class="muted">Retail: '+esc(x.price_status||'unverified')+' · Approval: '+esc(x.listing_approval||'draft')+'</div><div class="row" style="margin-top:8px"><button class="btn" data-action="edit" data-id="'+esc(x.id)+'">Edit listing</button><button class="btn" data-action="review" data-id="'+esc(x.id)+'">Needs changes</button><button class="btn primary" data-action="approve" data-id="'+esc(x.id)+'" '+(!eligible(x)?'disabled':'')+'>Approve</button><button class="btn" data-action="draft" data-id="'+esc(x.id)+'">Draft</button><button class="btn primary" data-action="publish" data-id="'+esc(x.id)+'" '+(x.listing_approval!=='approved'||!eligible(x)?'disabled':'')+'>Publish to Facebook ↗</button><button class="btn" data-action="omni" data-id="'+esc(x.id)+'" '+(x.listing_approval!=='approved'||!eligible(x)?'disabled':'')+'>Send to Facebook Page (Omni Social)</button><button class="btn" data-action="group" data-id="'+esc(x.id)+'" '+(x.listing_approval!=='approved'||!eligible(x)?'disabled':'')+'>Post to Group ↗</button></div></div>'
  ).join('');
  wrap.querySelectorAll('button[data-action]').forEach(b=>b.onclick=async()=>{
   const x=queue.find(v=>v.id===b.dataset.id);if(!x)return;
@@ -51,6 +51,16 @@ async function refresh(){
     alert('Could not prepare the Omni Social draft: '+(error?.message||error));
    }
    return;
+  }
+  if(b.dataset.action==='group'){
+   // Meta has no API for posting into Groups, so this is a guided manual post: copy text, open the group.
+   if(x.listing_approval!=='approved'||!eligible(x))return;
+   const KEY='stockbot-fb-group-url';let url='';try{url=localStorage.getItem(KEY)||''}catch(_){}
+   if(!url){url=(prompt('Paste the Deal Drop MI – First Look Deals group link (saved on this device):','https://www.facebook.com/groups/')||'').trim();if(!/^https:\/\/(www\.|m\.)?facebook\.com\/groups\/[^/?#]+/i.test(url)){if(url)alert('That is not a Facebook group link.');return;}try{localStorage.setItem(KEY,url)}catch(_){}}
+   const noteDesc=(String(x.condition_notes||'').match(/^Description:\s*(.+)$/im)||[])[1]||'';
+   const body=[x.listing_title||x.product_name,'Price: $'+Number(x.listing_price||x.suggested_price).toFixed(2),x.listing_description||noteDesc,x.condition_grade?'Condition: '+x.condition_grade:'','Pickup in Michigan — message the Deal Drop MI page to claim.'].filter(Boolean).join('\n\n');
+   try{await navigator.clipboard.writeText(body);alert('Group post text copied. The group will open — paste the text, add the item photos from StockBot, and post.');}catch(e){prompt('Copy this group post:',body);}
+   window.open(url,'_blank','noopener,noreferrer');return;
   }
   if(b.dataset.action==='publish'){
    if(x.listing_approval!=='approved'||!eligible(x))return;

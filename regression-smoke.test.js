@@ -29,7 +29,7 @@ assert.match(dashboard,/renderSheet/);
 assert.match(dashboard,/Download Spreadsheet \(CSV\)/);
 assert.match(html,/downloadPhotoInventory/);
 assert.match(listings,/listing_approval!=='approved'/);
-assert.match(listings,/Send to Omni Social/);
+assert.match(listings,/Send to Facebook Page \(Omni Social\)/);assert.match(listings,/data-action="group"/);
 assert.match(listings,/targetClientName:'Deal Drop MI'/);
 assert.match(listings,/facebook\.com\/marketplace\/create\/item/);
 console.log('StockBot regression smoke tests passed');
