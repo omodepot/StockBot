@@ -1,7 +1,7 @@
 name: Validate StockBot Repair
 on:
   push:
-    branches: [stockbot-intake-repair]
+    branches: [stockbot-intake-repair, stockbot-upc-delete-repair-20261013]
   workflow_dispatch:
 permissions:
   contents: read
@@ -19,3 +19,7 @@ jobs:
           open('/tmp/app.js','w').write('\\n'.join(blocks))
           PY
           node --check /tmp/app.js
+      - name: Syntax-check modules and run tests
+        run: |
+          for f in *.js; do node --check "$f"; done
+          for t in *.test.js; do node "$t"; done

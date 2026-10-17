@@ -39,11 +39,14 @@ const notify=message=>typeof window.toast==='function'?window.toast(message):ale
 function lookupMessage(text,tone='muted'){
  let el=$('lookupStatus');
  if(!el){el=document.createElement('div');el.id='lookupStatus';el.className='muted';el.style.margin='8px 0';($('pupc')?.closest('.row')||$('pupc')?.parentElement||$('product'))?.after(el)}
- if(el){el.className=tone;el.textContent=text}
+ if(el){el.className=tone;el.textContent=text;const code=String($('pupc')?.value||window.stockbotCurrent?.upc||'').replace(/\D/g,'');if(code&&/Partial|No catalog|unavailable/i.test(text)){const a=document.createElement('a');a.href='https://www.google.com/search?q='+encodeURIComponent(code);a.target='_blank';a.rel='noopener noreferrer';a.textContent=' Search the web for UPC '+code+' ↗';el.append(a)}}
 }
 function goodDescription(value){const text=clean(value);return text&&!/^(ingredients?|nutrition|allergens?|contains)\s*[:\-]/i.test(text)&&!(/ingredients?/i.test(text)&&text.length>120)}
+async function savedPhotoCount(){const id=window.stockbotCurrent?.id;if(!id)return 0;try{const {count,error}=await sb.from('inventory_photos').select('id',{count:'exact',head:true}).eq('inventory_item_id',id);if(error)throw error;return count||0}catch(_){return 0}}
 async function attachCatalogImage(url,name){
  if(!url)return false;
+ if(await savedPhotoCount()>0)return false;
+ if(Array.from($('itemPhotos')?.files||[]).some(f=>/^catalog-|catalog-product/i.test(f.name)||f.name.startsWith((name||'catalog-product').replace(/[^a-z0-9]+/gi,'-'))))return false;
  let box=$('catalogImage');
  if(!box){box=document.createElement('div');box.id='catalogImage';box.style.margin='10px 0';$('savedPhotosWrap')?.after(box)}
  if(box)box.innerHTML='<div class="muted">Catalog product image</div><img src="'+url.replace(/"/g,'&quot;')+'" alt="Catalog product image" referrerpolicy="no-referrer" style="display:block;max-width:150px;max-height:150px;object-fit:contain;border-radius:10px;margin-top:5px">';
@@ -83,25 +86,34 @@ async function autofillProduct(upc){
   notify(f.name?'Product found: '+f.name:'Partial product information found for this UPC.');return true;
  }catch(error){console.error('StockBot product lookup',error);lookupMessage('Product lookup unavailable: '+(error.message||error)+'. You can still enter the item manually.');notify('Product lookup is unavailable; enter the item manually.');return false}
 }
+async function salesCount(item){let total=0;for(const table of ['sales','sales_transactions']){const {count,error}=await sb.from(table).select('id',{count:'exact',head:true}).eq('inventory_item_id',item.id);if(error)throw error;total+=count||0}return total}
+async function archiveItem(item){
+ const result=await sb.from('inventory_items').update({archived_at:new Date().toISOString(),archive_reason:'Deleted from inventory (sales history kept)',listing_approval:'draft'}).eq('id',item.id).eq('owner_id',user.id).select('id');if(result.error)throw result.error;
+ if(!result.data?.length)throw new Error('The item was not archived. Refresh and try again.');return true;
+}
 async function permanentDelete(item){
  if(!item?.id)throw new Error('This item has not been saved');
+ // Every child table cascades on delete, so a hard delete would also erase recorded sales.
+ if(await salesCount(item)>0)throw new Error('This item has recorded sales; archive it instead so sales history is kept.');
  const {data:photos,error:photoError}=await sb.from('inventory_photos').select('storage_path').eq('inventory_item_id',item.id);if(photoError)throw photoError;
  const result=await sb.from('inventory_items').delete().eq('id',item.id).eq('owner_id',user.id).select('id');if(result.error)throw result.error;
  if(!result.data?.some(row=>String(row.id)===String(item.id)))throw new Error('The item was not deleted. Refresh and try again.');
  const paths=(photos||[]).map(p=>p.storage_path).filter(Boolean);if(paths.length){const removed=await sb.storage.from('inventory-photos').remove(paths);if(removed.error)console.warn('Item deleted; orphaned photo cleanup failed',removed.error)}
  return true;
 }
-function confirmDelete(item){
+async function confirmDelete(item){
  if($('deleteItemDialog'))return;
+ let sold=0;try{sold=await salesCount(item)}catch(e){notify('Could not check sales history: '+(e.message||e));return}
  const overlay=document.createElement('div');overlay.id='deleteItemDialog';overlay.className='deleteItemOverlay';overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');overlay.setAttribute('aria-labelledby','deleteItemTitle');overlay.innerHTML='<div class="deleteItemPanel"><h2 id="deleteItemTitle">Permanently Delete Item?</h2><p>Are you sure you want to permanently delete <strong></strong> and its associated inventory information?</p><p class="muted">This action cannot be undone.</p><div class="row"><button class="btn" id="cancelDeleteItem" type="button">Cancel</button><button class="btn danger" id="confirmDeleteItem" type="button">Delete Permanently</button></div></div>';
- overlay.querySelector('strong').textContent=item.product_name||'this item';document.body.appendChild(overlay);const cancel=()=>overlay.remove();$('cancelDeleteItem').onclick=cancel;overlay.onclick=e=>{if(e.target===overlay)cancel()};
- $('confirmDeleteItem').onclick=async()=>{const button=$('confirmDeleteItem');button.disabled=true;button.textContent='Deleting…';try{await permanentDelete(item);overlay.remove();if(typeof closeEditor==='function')closeEditor();await load();showView('inventory');notify('Item permanently deleted.')}catch(error){button.disabled=false;button.textContent='Delete Permanently';notify('Delete failed: '+(error.message||error))}};
+ overlay.querySelector('strong').textContent=item.product_name||'this item';
+ if(sold>0){overlay.querySelector('h2').textContent='Remove Item From Inventory?';overlay.querySelectorAll('p')[0].textContent='Remove '+(item.product_name||'this item')+' from your active inventory?';overlay.querySelectorAll('p')[1].textContent='This item has '+sold+' recorded sale'+(sold===1?'':'s')+'. It will be archived (hidden from inventory and listings) so your sales history and profit totals are kept.';overlay.querySelector('#confirmDeleteItem').textContent='Remove (Keep Sales History)'}document.body.appendChild(overlay);const cancel=()=>overlay.remove();$('cancelDeleteItem').onclick=cancel;overlay.onclick=e=>{if(e.target===overlay)cancel()};
+ $('confirmDeleteItem').onclick=async()=>{const button=$('confirmDeleteItem');button.disabled=true;button.textContent='Deleting…';try{if(sold>0)await archiveItem(item);else await permanentDelete(item);overlay.remove();if(typeof closeEditor==='function')closeEditor();await load();showView('inventory');notify(sold>0?'Item removed from inventory; sales history kept.':'Item permanently deleted.')}catch(error){button.disabled=false;button.textContent='Delete Permanently';notify('Delete failed: '+(error.message||error))}};
 }
 function install(){
  const product=$('product'),item=window.stockbotCurrent;if(!product?.classList.contains('editorOpen')||!item?.id)return;
  const actions=$('save')?.closest('.row');if(actions&&!$('deleteItem')){const button=document.createElement('button');button.id='deleteItem';button.type='button';button.className='btn danger';button.textContent='Delete Item';button.onclick=()=>confirmDelete(item);actions.appendChild(button)}
 }
 const style=document.createElement('style');style.textContent='.deleteItemOverlay{position:fixed;inset:0;background:#0f172acc;z-index:160;display:grid;place-items:center;padding:18px}.deleteItemPanel{width:min(100%,480px);background:#fff;border-radius:16px;padding:20px;box-shadow:0 18px 50px #0005}.deleteItemPanel h2{margin-top:0}.deleteItemPanel .row{margin-top:18px}.deleteItemPanel .danger{background:#b91c1c!important}';document.head.appendChild(style);
-window.autofillProduct=autofillProduct;window.StockBotRepairV48={...api,autofillProduct,permanentDelete,install};
+window.autofillProduct=autofillProduct;window.StockBotRepairV48={...api,autofillProduct,permanentDelete,archiveItem,salesCount,install};
 new MutationObserver(install).observe(document.documentElement,{childList:true,subtree:true});install();
 })();

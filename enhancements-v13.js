@@ -3,11 +3,15 @@
 const $=id=>document.getElementById(id);
 function enhance(){
  const notes=$('notes');if(!notes)return;
- if(!$('brand')){const box=document.createElement('div');box.innerHTML='<label>Brand</label><input id="brand" placeholder="Brand / manufacturer"><label>Category</label><input id="category" placeholder="Category">';notes.parentNode.insertBefore(box,notes);$('brand').value=window.stockbotCurrent?.brand||'';$('category').value=window.stockbotCurrent?.category||'';}
+ if(!$('brand')){const box=document.createElement('div');box.innerHTML='<label>Brand</label><input id="brand" placeholder="Brand / manufacturer"><label>Category</label><input id="category" placeholder="Category">';notes.parentNode.insertBefore(box,notes);const cn=String(window.stockbotCurrent?.condition_notes||''),line=k=>(cn.match(new RegExp('^'+k+':\\s*(.+)$','im'))||[])[1]||'';$('brand').value=window.stockbotCurrent?.brand||line('Brand');$('category').value=window.stockbotCurrent?.category||line('Category');}
  if(!$('description')){const box=document.createElement('div');box.innerHTML='<label>Product description (not ingredients)</label><textarea id="description" placeholder="Description for resale listing"></textarea>';notes.parentNode.insertBefore(box,notes.nextSibling);const m=String(window.stockbotCurrent?.condition_notes||'').match(/Description:\s*([^\n]+)/i);if(m)$('description').value=m[1];}
  if(!$('msrp')){const row=$('price')?.closest('.row');if(row){const box=document.createElement('div');box.innerHTML='<label>Online retail / MSRP (verify before publishing)</label><input id="msrp" type="number" step=".01" min="0"><label>Last known retail</label><input id="lastRetail" type="number" step=".01" min="0" readonly><div class="muted" id="priceSource"></div>';row.insertBefore(box,row.firstChild);const x=window.stockbotCurrent;if(x?.unit_retail!=null)$('msrp').value=x.unit_retail;if(x?.last_known_retail!=null)$('lastRetail').value=x.last_known_retail;const p=$('priceSource');p.dataset.checkedAt=x?.price_checked_at||'';p.dataset.source=x?.price_source||'';p.dataset.status=x?.price_status||'unverified';p.textContent=x?.price_checked_at?'Checked '+new Date(x.price_checked_at).toLocaleDateString()+' · '+(x.price_source||'unknown')+' · '+(x.price_status||'unverified'):'Price not yet verified';$('msrp').oninput=()=>{p.dataset.status='manual_review';p.dataset.source='manual';p.dataset.checkedAt=new Date().toISOString();};}}
 }
-window.stockbotEnhanceEditor=function(){enhance();const upc=$('pupc')?.value||window.stockbotCurrent?.upc;if(upc)setTimeout(()=>window.autofillProduct(upc),80);};
+window.stockbotEnhanceEditor=function(){enhance();const x=window.stockbotCurrent||{};
+ // Only look the UPC up again when this record is still missing catalog details. Re-running it on every
+ // open re-queued the catalog photo, so saving an existing item uploaded a duplicate image each time.
+ const notes=String(x.condition_notes||'');const missing=!x.id||!x.product_name||!(x.brand||/^Brand:/im.test(notes))||!/^Description:/im.test(notes)||!(Number(x.unit_retail)>0||Number(x.suggested_price)>0);
+ const upc=$('pupc')?.value||x.upc;if(upc&&missing)setTimeout(()=>window.autofillProduct(upc),80);};
 window.autofillProduct=async function(upc){
  upc=String(upc||'').replace(/\D/g,'');if(!upc)return false;
  try{
@@ -32,5 +36,5 @@ window.autofillProduct=async function(upc){
   return true;
  }catch(e){console.error('StockBot lookup',e);if($('priceSource'))$('priceSource').textContent='Lookup unavailable: '+e.message;return false;}
 };
-window.handleScannedUPC=async function(code,target){code=String(code||'').replace(/\D/g,'');if(target==='editor'&&$('pupc')){$('pupc').value=code;await window.autofillProduct(code);return;}if($('lookup'))$('lookup').value=code;const norm=v=>String(v||'').replace(/\D/g,'').replace(/^0(?=\d{12}$)/,'');const found=(window.items||items||[]).find(x=>norm(x.upc)===norm(code));if(found){openItem(found.id);return;}newItem(code,'');setTimeout(()=>window.autofillProduct(code),150);};
+window.handleScannedUPC=async function(code,target){code=String(code||'').replace(/\D/g,'');if(target==='sale'){if(window.StockBotInventoryV27?.handleSaleScan)window.StockBotInventoryV27.handleSaleScan(code);return;}if(target==='editor'&&$('pupc')){$('pupc').value=code;await window.autofillProduct(code);return;}if($('lookup'))$('lookup').value=code;const norm=v=>String(v||'').replace(/\D/g,'').replace(/^0(?=\d{12}$)/,'');const found=(window.items||items||[]).find(x=>norm(x.upc)===norm(code));if(found){openItem(found.id);return;}newItem(code,'');setTimeout(()=>window.autofillProduct(code),150);};
 })();

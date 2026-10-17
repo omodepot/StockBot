@@ -31,7 +31,7 @@ async function refresh(){
    if(!popup){alert('Allow pop-ups for StockBot to send a listing to Omni Social.');return;}
    popup.document.write('<title>Preparing Omni Social draft…</title><p style="font:16px system-ui;padding:24px">Preparing approved listing for Omni Social…</p>');
    try{
-    const {data:photos,error:photoError}=await sb.from('inventory_photos').select('storage_path').eq('inventory_item_id',x.id).order('created_at',{ascending:true}).limit(10);
+    const {data:photos,error:photoError}=await sb.from('inventory_photos').select('storage_path').eq('inventory_item_id',x.id).order('sort_order',{ascending:true}).order('created_at',{ascending:true}).limit(10);
     if(photoError)throw photoError;
     const mediaUrls=[];
     for(const photo of photos||[]){
@@ -41,7 +41,8 @@ async function refresh(){
      if(data?.signedUrl)mediaUrls.push(data.signedUrl);
     }
     const title=x.listing_title||x.product_name||'Marketplace listing';
-    const caption=[title,x.brand?'Brand: '+x.brand:'',x.category?'Category: '+x.category:'',x.listing_description||x.condition_notes||'',x.condition_grade?'Condition: '+x.condition_grade:'', 'Price: $'+Number(x.listing_price||x.suggested_price).toFixed(2), x.upc?'UPC: '+x.upc:''].filter(Boolean).join('\\n\\n');
+    const noteDesc=(String(x.condition_notes||'').match(/^Description:\s*(.+)$/im)||[])[1]||'';
+    const caption=[title,x.brand?'Brand: '+x.brand:'',x.category?'Category: '+x.category:'',x.listing_description||noteDesc,x.condition_grade?'Condition: '+x.condition_grade:'', 'Price: $'+Number(x.listing_price||x.suggested_price).toFixed(2), x.upc?'UPC: '+x.upc:''].filter(Boolean).join('\n\n');
     const payload={version:1,source:'stockbot',sourceId:x.id,updatedAt:x.listing_updated_at||null,sentAt:new Date().toISOString(),targetClientName:'Deal Drop MI',title,caption,platforms:['facebook'],mediaUrls};
     const destination='https://omnisocial.pages.dev/#stockbot='+encodeURIComponent(JSON.stringify(payload));
     popup.opener=null;popup.location.replace(destination);
