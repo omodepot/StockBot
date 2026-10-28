@@ -1,0 +1,11 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {fileKey,mergeFiles}=require('./photo-intake-v49.js');
+const a={name:'IMG_1.jpg',size:100,lastModified:1,type:'image/jpeg'};
+const b={name:'IMG_2.jpg',size:200,lastModified:2,type:'image/jpeg'};
+const c={name:'IMG_3.jpg',size:300,lastModified:3,type:'image/jpeg'};
+assert.equal(fileKey(a),'IMG_1.jpg|100|1|image/jpeg');
+assert.deepEqual(mergeFiles([], [a,b]),[a,b]);
+assert.deepEqual(mergeFiles([a,b],[b,c]),[a,b,c]);
+assert.deepEqual(mergeFiles([a],[a]),[a]);
+console.log('photo intake v49 tests passed');
