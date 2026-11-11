@@ -86,3 +86,6 @@ assert.match(upcMatch,/StockBotInventoryV27\?\.handleSaleScan/,'sale scans must 
 }
 assert.match(listings,/is\('archived_at',null\)/,'archived items must not appear in the listing queue');
 console.log('StockBot Nov 11 checks passed');
+assert.match(repair,/window\.StockBotCatalogPending=\{url/,'blocked catalog images must be handed to the server');
+assert.match(photoIntake,/stockbot-photo-from-url/);
+assert.match(photoIntake,/if\(c\.upc&&upcNow&&c\.upc!==upcNow\)return false/,'a catalog photo must never be saved onto a different product');

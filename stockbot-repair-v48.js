@@ -44,6 +44,7 @@ function lookupMessage(text,tone='muted'){
 function goodDescription(value){const text=clean(value);return text&&!/^(ingredients?|nutrition|allergens?|contains)\s*[:\-]/i.test(text)&&!(/ingredients?/i.test(text)&&text.length>120)}
 async function savedPhotoCount(){const id=window.stockbotCurrent?.id;if(!id)return 0;try{const {count,error}=await sb.from('inventory_photos').select('id',{count:'exact',head:true}).eq('inventory_item_id',id);if(error)throw error;return count||0}catch(_){return 0}}
 async function attachCatalogImage(url,name){
+ window.StockBotCatalogPending=null;
  if(!url)return false;
  if(await savedPhotoCount()>0)return false;
  if(Array.from($('itemPhotos')?.files||[]).some(f=>/^catalog-|catalog-product/i.test(f.name)||f.name.startsWith((name||'catalog-product').replace(/[^a-z0-9]+/gi,'-'))))return false;
@@ -57,7 +58,10 @@ async function attachCatalogImage(url,name){
   const ext=(blob.type.split('/')[1]||'jpg').replace('jpeg','jpg');const file=new File([blob],(name||'catalog-product').replace(/[^a-z0-9]+/gi,'-')+'.'+ext,{type:blob.type});
   const dt=new DataTransfer();Array.from(input.files||[]).forEach(f=>dt.items.add(f));dt.items.add(file);input.files=dt.files;
   input.dispatchEvent(new Event('change',{bubbles:true}));if(box)box.querySelector('.muted').textContent='Catalog product image — will save with this item';return true;
- }catch(error){console.warn('Catalog image shown but could not be queued for saving',error);if(box)box.querySelector('.muted').textContent='Catalog product image preview — add it manually if you want it saved';return false}
+ }catch(error){
+  // Store image hosts usually block browser downloads; the stockbot-photo-from-url function fetches it on save.
+  window.StockBotCatalogPending={url,upc:String($('pupc')?.value||window.stockbotCurrent?.upc||'').replace(/\D/g,''),name:name||''};
+  if(box)box.querySelector('.muted').textContent='Catalog product image — will save with this item';return 'server'}
 }
 async function autofillProduct(upc){
  const code=String(upc||'').replace(/\D/g,'');if(!code){lookupMessage('Enter or scan a valid UPC.');return false}
