@@ -27,7 +27,7 @@ async function fetchImage(start: URL) {
   for (let hop = 0; hop < 4; hop++) {
     const c = new AbortController(), t = setTimeout(() => c.abort(), 8000);
     let r: Response;
-    try { r = await fetch(target, { redirect: "manual", signal: c.signal, headers: { Accept: "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8", "User-Agent": "Mozilla/5.0 (compatible; StockBot/4.0; +https://omodepot.github.io/StockBot/)" } }); }
+    try { r = await fetch(target, { redirect: "manual", signal: c.signal, headers: { Accept: "image/jpeg,image/png;q=0.9,image/webp;q=0.8", "User-Agent": "Mozilla/5.0 (compatible; StockBot/4.0; +https://omodepot.github.io/StockBot/)" } }); }
     finally { clearTimeout(t); }
     if (r.status >= 300 && r.status < 400) {
       const next = allowedImageUrl(new URL(r.headers.get("location") || "", target).toString());
