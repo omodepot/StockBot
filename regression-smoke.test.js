@@ -73,3 +73,16 @@ console.log('StockBot sign-in render checks passed');
 assert.match(dashboard,/const seq=\+\+renderSeq;/,'overlapping renders must not blank the inventory');
 assert.match(dashboard,/if\(seq!==renderSeq\)return;host\.innerHTML/);
 assert.match(dashboard,/photoMap=next/);
+assert.match(upcMatch,/typeof items!=='undefined'/,'UPC matching must read the page inventory (a top-level let, not window.items)');
+assert.match(upcMatch,/StockBotInventoryV27\?\.handleSaleScan/,'sale scans must reach the dashboard sale dialog');
+{ // behaviour: a sale scan of a known UPC opens that item in the sale dialog
+  const vm=require('node:vm');const calls=[];
+  const ctx={window:{},document:{getElementById:()=>null},toast:()=>{},openItem:()=>{}};ctx.window=ctx;
+  vm.createContext(ctx);vm.runInContext("let items=[{id:'a',upc:'0885911425308'}];",ctx);
+  ctx.StockBotInventoryV27={handleSaleScan:c=>calls.push(c)};
+  vm.runInContext(upcMatch,ctx);
+  ctx.handleScannedUPC('885911425308','sale');
+  assert.deepEqual(calls,['0885911425308']);
+}
+assert.match(listings,/is\('archived_at',null\)/,'archived items must not appear in the listing queue');
+console.log('StockBot Nov 11 checks passed');

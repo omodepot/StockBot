@@ -8,7 +8,7 @@ const eligible=x=>Number(x.available_qty)>0&&Number(x.listing_price||x.suggested
 async function refresh(){
  const wrap=$('listingQueue');if(!wrap)return;
  wrap.textContent='Loading listings…';
- const {data,error}=await sb.from('inventory_items').select('id,product_name,brand,category,upc,available_qty,condition_grade,condition_notes,suggested_price,unit_retail,price_status,listing_approval,listing_title,listing_description,listing_price,listing_updated_at,status').order('created_at',{ascending:false});
+ const {data,error}=await sb.from('inventory_items').select('id,product_name,brand,category,upc,available_qty,condition_grade,condition_notes,suggested_price,unit_retail,price_status,listing_approval,listing_title,listing_description,listing_price,listing_updated_at,status').is('archived_at',null).order('created_at',{ascending:false});
  if(error){wrap.textContent='Could not load listings: '+error.message;return;}
  queue=data||[];
  if(!queue.length){wrap.textContent='No inventory items yet.';return;}
