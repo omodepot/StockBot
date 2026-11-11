@@ -65,3 +65,8 @@ for(const [name,src] of [['index.html',html],['dashboard',dashboard],['listings'
 }
 assert.doesNotMatch(listings,/join\('\\\\n/,'listing captions must use real newlines');
 console.log('StockBot v49 regression checks passed');
+
+// The dashboard replaces the legacy #search/#list markup; load() must not crash on it.
+assert.match(html,/function renderList\(\)\{if\(!\$\('list'\)\)return;/);
+assert.match(dashboard,/try\{await originalLoad\.apply\(this,args\)\}catch/);
+console.log('StockBot sign-in render checks passed');
