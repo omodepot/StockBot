@@ -70,3 +70,6 @@ console.log('StockBot v49 regression checks passed');
 assert.match(html,/function renderList\(\)\{if\(!\$\('list'\)\)return;/);
 assert.match(dashboard,/try\{await originalLoad\.apply\(this,args\)\}catch/);
 console.log('StockBot sign-in render checks passed');
+assert.match(dashboard,/const seq=\+\+renderSeq;/,'overlapping renders must not blank the inventory');
+assert.match(dashboard,/if\(seq!==renderSeq\)return;host\.innerHTML/);
+assert.match(dashboard,/photoMap=next/);

@@ -11,8 +11,8 @@ const statusOf=x=>{const exp=Number(x.expected_qty||0),rec=Number(x.received_qty
 const csvCell=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
 
 async function loadPhotos(){
- photoMap={};
- try{const {data,error}=await sb.from('inventory_photos').select('*').order('sort_order');if(error)throw error;for(const p of data||[])(photoMap[p.inventory_item_id]??=[]).push(p)}catch(e){console.warn('Could not load inventory photos',e)}
+ // Build the map off to the side so an overlapping render never sees a half-empty map.
+ try{const {data,error}=await sb.from('inventory_photos').select('id,inventory_item_id,storage_path,sort_order,created_at').order('sort_order');if(error)throw error;const next={};for(const p of data||[])(next[p.inventory_item_id]??=[]).push(p);photoMap=next}catch(e){console.warn('Could not load inventory photos',e)}
 }
 async function signAll(paths){const out={};const list=[...new Set(paths.filter(Boolean))];for(let i=0;i<list.length;i+=100){try{const {data,error}=await sb.storage.from('inventory-photos').createSignedUrls(list.slice(i,i+100),3600);if(error)throw error;for(const r of data||[])if(r.signedUrl)out[r.path]=r.signedUrl}catch(e){console.warn('Could not sign photo URLs',e)}}return out}
 async function signedPhoto(path){try{const {data,error}=await sb.storage.from('inventory-photos').createSignedUrl(path,3600,{transform:{width:360,height:360,resize:'cover',quality:65}});if(error)throw error;return data?.signedUrl||''}catch(e){console.warn('Could not sign photo URL',e);return''}}
@@ -26,10 +26,15 @@ async function saleSummaries(){
  try{const {data,error}=await sb.from('sales_transactions').select('inventory_item_id,quantity,sale_amount,sold_at');if(error)throw error;for(const r of data||[])add(r.inventory_item_id,r.quantity,r.sale_amount,r.sold_at)}catch(e){console.warn('Could not load legacy sales_transactions',e)}
  return map;
 }
+// Renders overlap (startup, sign-in, token refresh, saves). Only the newest one may write, otherwise a
+// render started before inventory loaded can finish last and blank the list.
+let renderSeq=0;
 async function renderSheet(){
  const host=$('inventorySheet');if(!host)return;
+ const seq=++renderSeq;
  const rows=filterItems($('invFilter')?.value||'all',$('invSearch')?.value||'');
  const [sales,signed]=await Promise.all([saleSummaries(),signAll(rows.flatMap(x=>(photoMap[x.id]||[]).map(p=>p.storage_path)))]);
+ if(seq!==renderSeq)return;
  const cards=await Promise.all(rows.map(async x=>{
   const photos=(photoMap[x.id]||[]).map(p=>({url:signed[p.storage_path]||'',path:p.storage_path}));
   const usable=photos.filter(p=>p.url);
@@ -39,7 +44,7 @@ async function renderSheet(){
   const isSold=statusOf(x)==='Sold';
   return '<article class="sb27-card" data-id="'+escHtml(x.id)+'"><details class="sb27-details"><summary class="sb27-summary"><strong>'+safeEsc(x.product_name||'Unnamed product')+'</strong><span>UPC '+safeEsc(x.upc||'—')+'</span><span>'+available(x)+' available · '+safeEsc(statusOf(x))+'</span></summary><div class="sb27-expanded"><div class="sb27-main">'+pics+'<div class="sb27-info"><div class="sb27-name">'+safeEsc(x.product_name||'Unnamed product')+'</div><div class="sb27-upc">UPC: <strong>'+safeEsc(x.upc||'—')+'</strong>'+(x.sku?' <span>· SKU: '+safeEsc(x.sku)+'</span>':'')+'</div><p class="sb27-description">'+safeEsc(descriptionText)+'</p><div class="sb27-tags">'+(brand?'<span>Brand: '+safeEsc(brand)+'</span>':'')+(category?'<span>Category: '+safeEsc(category)+'</span>':'')+(x.condition_grade?'<span>Condition: '+safeEsc(x.condition_grade)+'</span>':'')+'<span class="sb27-status '+(isSold?'sold':'')+'">'+safeEsc(statusOf(x))+'</span></div></div></div><div class="sb27-facts"><div><small>Unit cost</small><strong>'+cash(x.unit_cost)+'</strong></div><div><small>Last known retail price</small><strong>'+cash(x.last_known_retail)+'</strong></div><div><small>Suggested Facebook Marketplace</small><strong>'+cash(x.suggested_price)+'</strong></div><div><small>Retail / MSRP</small><strong>'+cash(x.unit_retail)+'</strong></div><div><small>Available</small><strong>'+available(x)+'</strong></div><div><small>Sold</small><strong>'+sold.qty+' item'+(sold.qty===1?'':'s')+' · '+cash(sold.total)+'</strong></div></div><div class="sb27-foot"><span class="sb27-sale-date">'+(sold.last?'Last sale: '+safeEsc(new Date(sold.last).toLocaleDateString()):'')+'</span><div class="sb27-actions"><button class="btn sb27-edit" type="button">Edit product</button>'+(available(x)>0?'<button class="btn green sb27-toggle-sale" type="button">Record sale / Mark sold</button>':'')+'</div></div><div class="sb27-sale-form hidden"><div class="row"><label>Quantity sold<input class="sb27-qty" type="number" min="1" max="'+Math.max(available(x),1)+'" value="1"></label><label>Sold for (total amount)<input class="sb27-amount" type="number" min="0" step="0.01" placeholder="0.00"></label></div><div class="row"><label>Payment method<select class="sb27-method"><option value="cash">Cash</option><option value="venmo">Venmo</option><option value="zelle">Zelle</option><option value="paypal">PayPal</option><option value="cash_app">Cash App</option><option value="card">Card</option><option value="other">Other</option></select></label><label>Sale notes (optional)<input class="sb27-notes" placeholder="Buyer, pickup, discount…"></label></div><div class="sb27-actions"><button class="btn sb27-cancel-sale" type="button">Cancel</button><button class="btn green sb27-save-sale" type="button">Save sale</button></div></div></div></details></article>';
  }));
- host.innerHTML='<div class="sb27-list">'+cards.join('')+'</div><p class="muted">Showing '+rows.length+' product'+(rows.length===1?'':'s')+'. Product details, pricing, photos, and sale tracking are shown on each card.</p>';
+ if(seq!==renderSeq)return;host.innerHTML='<div class="sb27-list">'+cards.join('')+'</div><p class="muted">Showing '+rows.length+' product'+(rows.length===1?'':'s')+'. Product details, pricing, photos, and sale tracking are shown on each card.</p>';
  host.querySelectorAll('.sb27-card').forEach(card=>{
   const x=inventory().find(item=>String(item.id)===card.dataset.id);if(!x)return;
   card.querySelector('.sb27-edit')?.addEventListener('click',()=>{if(typeof window.openItem==='function')window.openItem(x.id);else if(typeof openItem==='function')openItem(x.id)});
