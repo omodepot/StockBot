@@ -4,6 +4,21 @@ const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const csv=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
 let queue=[];
+const GROUP_URL='https://www.facebook.com/groups/2514812275660856/';
+const CONDITION={'New/Sealed':'New and sealed.','Like New/Open Box':'Open box, like new.','Good':'Used, good condition.','Fair/Damaged':'Used, shows wear or damage (see photos).','Missing Parts':'Missing parts (see description).'};
+// Deal Drop MI post format: item + price (+ store price) / condition / one useful line / how to claim.
+function writePost(x,{marketplace=false}={}){
+ const price=Number(x.listing_price||x.suggested_price)||0, retail=Number(x.unit_retail)||0;
+ const title=String(x.listing_title||x.product_name||'Deal Drop MI find').trim();
+ const desc=String(x.listing_description||(String(x.condition_notes||'').match(/^Description:\s*(.+)$/im)||[])[1]||'').trim();
+ const short=desc.length>220?desc.slice(0,desc.lastIndexOf(' ',217)>120?desc.lastIndexOf(' ',217):217).replace(/[,;:.\s]+$/,'')+'…':desc;
+ const head='🔥 '+title+' — $'+price.toFixed(2)+(retail>price*1.1?' (about $'+Math.round(retail)+' new)':'');
+ const cond=CONDITION[x.condition_grade]||(x.condition_grade?x.condition_grade+'.':'');
+ const lines=[head,cond,short];
+ if(/car seat/i.test(title))lines.push('Never in a crash. Expiration date is on the seat label; ask and we will send a photo.');
+ lines.push(marketplace?'Pickup in Grand Blanc. Message to buy. New arrivals show up first in our free group, Deal Drop MI – First Look Deals.':'Comment MINE to claim • Pickup Grand Blanc');
+ return lines.filter(Boolean).join('\n');
+}
 const eligible=x=>Number(x.available_qty)>0&&Number(x.listing_price||x.suggested_price)>0&&x.status!=='sold';
 async function refresh(){
  const wrap=$('listingQueue');if(!wrap)return;
@@ -42,7 +57,7 @@ async function refresh(){
     }
     const title=x.listing_title||x.product_name||'Marketplace listing';
     const noteDesc=(String(x.condition_notes||'').match(/^Description:\s*(.+)$/im)||[])[1]||'';
-    const caption=[title,x.brand?'Brand: '+x.brand:'',x.category?'Category: '+x.category:'',x.listing_description||noteDesc,x.condition_grade?'Condition: '+x.condition_grade:'', 'Price: $'+Number(x.listing_price||x.suggested_price).toFixed(2), x.upc?'UPC: '+x.upc:''].filter(Boolean).join('\n\n');
+    const caption=writePost(x);
     const payload={version:1,source:'stockbot',sourceId:x.id,updatedAt:x.listing_updated_at||null,sentAt:new Date().toISOString(),targetClientName:'Deal Drop MI',title,caption,platforms:['facebook'],mediaUrls};
     const destination='https://omnisocial.pages.dev/#stockbot='+encodeURIComponent(JSON.stringify(payload));
     popup.opener=null;popup.location.replace(destination);
@@ -55,16 +70,16 @@ async function refresh(){
   if(b.dataset.action==='group'){
    // Meta has no API for posting into Groups, so this is a guided manual post: copy text, open the group.
    if(x.listing_approval!=='approved'||!eligible(x))return;
-   const KEY='stockbot-fb-group-url';let url='';try{url=localStorage.getItem(KEY)||''}catch(_){}
+   const KEY='stockbot-fb-group-url';let url=GROUP_URL;try{url=localStorage.getItem(KEY)||GROUP_URL}catch(_){}
    if(!url){url=(prompt('Paste the Deal Drop MI – First Look Deals group link (saved on this device):','https://www.facebook.com/groups/')||'').trim();if(!/^https:\/\/(www\.|m\.)?facebook\.com\/groups\/[^/?#]+/i.test(url)){if(url)alert('That is not a Facebook group link.');return;}try{localStorage.setItem(KEY,url)}catch(_){}}
    const noteDesc=(String(x.condition_notes||'').match(/^Description:\s*(.+)$/im)||[])[1]||'';
-   const body=[x.listing_title||x.product_name,'Price: $'+Number(x.listing_price||x.suggested_price).toFixed(2),x.listing_description||noteDesc,x.condition_grade?'Condition: '+x.condition_grade:'','Pickup in Michigan — message the Deal Drop MI page to claim.'].filter(Boolean).join('\n\n');
+   const body=writePost(x);
    try{await navigator.clipboard.writeText(body);alert('Group post text copied. The group will open — paste the text, add the item photos from StockBot, and post.');}catch(e){prompt('Copy this group post:',body);}
    window.open(url,'_blank','noopener,noreferrer');return;
   }
   if(b.dataset.action==='publish'){
    if(x.listing_approval!=='approved'||!eligible(x))return;
-   const body=[x.listing_title||x.product_name,'Price: $'+Number(x.listing_price||x.suggested_price).toFixed(2),x.listing_description||x.condition_notes||'','Condition: '+(x.condition_grade||'See description')].filter(Boolean).join('\n\n');
+   const body=writePost(x,{marketplace:true});
    try{await navigator.clipboard.writeText(body);alert('Listing copied. Facebook Marketplace will open. Paste the listing, attach photos and confirm publishing there.');}catch(e){prompt('Copy listing details:',body);}
    window.open('https://www.facebook.com/marketplace/create/item','_blank','noopener,noreferrer');return;
   }
