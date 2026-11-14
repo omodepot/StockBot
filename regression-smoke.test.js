@@ -98,3 +98,6 @@ assert.match(photoIntake,/if\(c\.upc&&upcNow&&c\.upc!==upcNow\)return false/,'a 
   assert.deepEqual(ctx.f('all','').map(x=>x.id),['a','c']);
   assert.deepEqual(ctx.f('sold','').map(x=>x.id),['b']);
 }
+assert.match(dashboard,/class="btn sb27-editphotos"/,'inventory cards need an Edit photos button');
+assert.match(read('photo-manager-v49.js'),/Make main photo[\s\S]*Move ▶[\s\S]*Replace[\s\S]*Delete/,'photo tools must be labeled');
+assert.match(read('photo-manager-v49.js'),/pm49-addlib[\s\S]*pm49-addcam/,'photo section needs add/take buttons');
