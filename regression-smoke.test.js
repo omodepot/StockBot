@@ -89,3 +89,12 @@ console.log('StockBot Nov 11 checks passed');
 assert.match(repair,/window\.StockBotCatalogPending=\{url/,'blocked catalog images must be handed to the server');
 assert.match(photoIntake,/stockbot-photo-from-url/);
 assert.match(photoIntake,/if\(c\.upc&&upcNow&&c\.upc!==upcNow\)return false/,'a catalog photo must never be saved onto a different product');
+{ // sold-out items are hidden from the main inventory list (they live on the Sold tab)
+  const vm=require('node:vm');const s=dashboard;
+  const pick=(name)=>{const i=s.indexOf(name);return s.slice(i,s.indexOf('\n',i))};
+  const ctx={};vm.createContext(ctx);
+  vm.runInContext("const available=x=>Number(x.available_qty??0);let rows=[];const inventory=()=>rows;"+pick('const statusOf=')+'\n'+pick('function filterItems(')+";this.f=filterItems;this.set=r=>rows=r;",ctx);
+  ctx.set([{id:'a',available_qty:1,received_qty:1,expected_qty:1},{id:'b',available_qty:0,received_qty:1,expected_qty:1,status:'sold'},{id:'c',available_qty:0,received_qty:0,expected_qty:4}]);
+  assert.deepEqual(ctx.f('all','').map(x=>x.id),['a','c']);
+  assert.deepEqual(ctx.f('sold','').map(x=>x.id),['b']);
+}
