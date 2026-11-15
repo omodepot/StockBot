@@ -4,6 +4,19 @@ const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const csv=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
 let queue=[];
+const SEND_FN='https://aiwdfltusdzhrrbblvfi.supabase.co/functions/v1/stockbot-send-omni';
+async function sendToOmni(itemOrId){
+ let x=typeof itemOrId==='object'?itemOrId:null;
+ if(!x){const {data,error}=await sb.from('inventory_items').select('*').eq('id',itemOrId).single();if(error)throw error;x=data}
+ const session=(await sb.auth.getSession()).data.session;if(!session)throw new Error('Please sign in again');
+ const res=await fetch(SEND_FN,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+session.access_token},body:JSON.stringify({item_id:x.id,caption:writePost(x)})});
+ const out=await res.json().catch(()=>({}));if(!res.ok||!out.ok)throw new Error(out.error||('status '+res.status));
+ return out;
+}
+function sentMessage(out){
+ if(out.action==='unchanged')return 'Already in Omni Social ('+(out.status||'in progress')+'); left as is.';
+ return (out.action==='updated'?'Omni Social draft updated':'Sent to Omni Social')+' for Deal Drop MI'+(out.photos?' with '+out.photos+' photo'+(out.photos===1?'':'s'):' (no photos yet)')+'. Open Omni Social → Deal Drop MI → Not scheduled, then Publish now.';
+}
 const GROUP_URL='https://www.facebook.com/groups/2514812275660856/';
 const CONDITION={'New/Sealed':'New and sealed.','Like New/Open Box':'Open box, like new.','Good':'Used, good condition.','Fair/Damaged':'Used, shows wear or damage (see photos).','Missing Parts':'Missing parts (see description).'};
 // Deal Drop MI post format: item + price (+ store price) / condition / one useful line / how to claim.
@@ -23,12 +36,12 @@ const eligible=x=>Number(x.available_qty)>0&&Number(x.listing_price||x.suggested
 async function refresh(){
  const wrap=$('listingQueue');if(!wrap)return;
  wrap.textContent='Loading listings…';
- const {data,error}=await sb.from('inventory_items').select('id,product_name,brand,category,upc,available_qty,condition_grade,condition_notes,suggested_price,unit_retail,price_status,listing_approval,listing_title,listing_description,listing_price,listing_updated_at,status').is('archived_at',null).order('created_at',{ascending:false});
+ const {data,error}=await sb.from('inventory_items').select('id,product_name,brand,category,upc,available_qty,condition_grade,condition_notes,suggested_price,unit_retail,price_status,listing_approval,listing_title,listing_description,listing_price,listing_updated_at,listing_channel,status').is('archived_at',null).order('created_at',{ascending:false});
  if(error){wrap.textContent='Could not load listings: '+error.message;return;}
  queue=data||[];
  if(!queue.length){wrap.textContent='No inventory items yet.';return;}
  wrap.innerHTML='<div class="muted">'+queue.length+' items · '+queue.filter(x=>x.listing_approval==='approved').length+' approved</div>'+queue.map(x=>
- '<div class="card" style="margin:10px 0;padding:12px"><b>'+esc(x.listing_title||x.product_name)+'</b><div class="muted">'+esc(x.brand||'Brand missing')+' · UPC '+esc(x.upc||'—')+' · Available '+Number(x.available_qty||0)+' · Price $'+Number(x.listing_price||x.suggested_price||0).toFixed(2)+'</div><div class="muted">Retail: '+esc(x.price_status||'unverified')+' · Approval: '+esc(x.listing_approval||'draft')+'</div><div class="row" style="margin-top:8px"><button class="btn" data-action="edit" data-id="'+esc(x.id)+'">Edit listing</button><button class="btn" data-action="review" data-id="'+esc(x.id)+'">Needs changes</button><button class="btn primary" data-action="approve" data-id="'+esc(x.id)+'" '+(!eligible(x)?'disabled':'')+'>Approve</button><button class="btn" data-action="draft" data-id="'+esc(x.id)+'">Draft</button><button class="btn primary" data-action="publish" data-id="'+esc(x.id)+'" '+(x.listing_approval!=='approved'||!eligible(x)?'disabled':'')+'>Publish to Facebook ↗</button><button class="btn" data-action="omni" data-id="'+esc(x.id)+'" '+(x.listing_approval!=='approved'||!eligible(x)?'disabled':'')+'>Send to Facebook Page (Omni Social)</button><button class="btn" data-action="group" data-id="'+esc(x.id)+'" '+(x.listing_approval!=='approved'||!eligible(x)?'disabled':'')+'>Post to Group ↗</button></div></div>'
+ '<div class="card" style="margin:10px 0;padding:12px"><b>'+esc(x.listing_title||x.product_name)+'</b><div class="muted">'+esc(x.brand||'Brand missing')+' · UPC '+esc(x.upc||'—')+' · Available '+Number(x.available_qty||0)+' · Price $'+Number(x.listing_price||x.suggested_price||0).toFixed(2)+'</div><div class="muted">Retail: '+esc(x.price_status||'unverified')+' · Approval: '+esc(x.listing_approval||'draft')+'</div><div class="row" style="margin-top:8px"><button class="btn" data-action="edit" data-id="'+esc(x.id)+'">Edit listing</button><button class="btn" data-action="review" data-id="'+esc(x.id)+'">Needs changes</button><button class="btn primary" data-action="approve" data-id="'+esc(x.id)+'" '+(!eligible(x)?'disabled':'')+'>Approve</button><button class="btn" data-action="draft" data-id="'+esc(x.id)+'">Draft</button><button class="btn primary" data-action="publish" data-id="'+esc(x.id)+'" '+(x.listing_approval!=='approved'||!eligible(x)?'disabled':'')+'>Publish to Facebook ↗</button><button class="btn" data-action="omni" data-id="'+esc(x.id)+'" '+(!eligible(x)?'disabled':'')+'>'+(x.listing_channel==='omni_social'?'✓ In Omni Social · Send again':'Send to Facebook Page (Omni Social)')+'</button><button class="btn" data-action="group" data-id="'+esc(x.id)+'" '+(x.listing_approval!=='approved'||!eligible(x)?'disabled':'')+'>Post to Group ↗</button></div></div>'
  ).join('');
  wrap.querySelectorAll('button[data-action]').forEach(b=>b.onclick=async()=>{
   const x=queue.find(v=>v.id===b.dataset.id);if(!x)return;
@@ -41,30 +54,10 @@ async function refresh(){
    if(error)alert(error.message);else await refresh();return;
   }
   if(b.dataset.action==='omni'){
-   if(x.listing_approval!=='approved'||!eligible(x))return;
-   const popup=window.open('about:blank','_blank');
-   if(!popup){alert('Allow pop-ups for StockBot to send a listing to Omni Social.');return;}
-   popup.document.write('<title>Preparing Omni Social draft…</title><p style="font:16px system-ui;padding:24px">Preparing approved listing for Omni Social…</p>');
-   try{
-    const {data:photos,error:photoError}=await sb.from('inventory_photos').select('storage_path').eq('inventory_item_id',x.id).order('sort_order',{ascending:true}).order('created_at',{ascending:true}).limit(10);
-    if(photoError)throw photoError;
-    const mediaUrls=[];
-    for(const photo of photos||[]){
-     if(!photo.storage_path)continue;
-     const {data,error}=await sb.storage.from('inventory-photos').createSignedUrl(photo.storage_path,31536000);
-     if(error)continue;
-     if(data?.signedUrl)mediaUrls.push(data.signedUrl);
-    }
-    const title=x.listing_title||x.product_name||'Marketplace listing';
-    const noteDesc=(String(x.condition_notes||'').match(/^Description:\s*(.+)$/im)||[])[1]||'';
-    const caption=writePost(x);
-    const payload={version:1,source:'stockbot',sourceId:x.id,updatedAt:x.listing_updated_at||null,sentAt:new Date().toISOString(),targetClientName:'Deal Drop MI',title,caption,platforms:['facebook'],mediaUrls};
-    const destination='https://omnisocial.pages.dev/#stockbot='+encodeURIComponent(JSON.stringify(payload));
-    popup.opener=null;popup.location.replace(destination);
-   }catch(error){
-    popup.close();
-    alert('Could not prepare the Omni Social draft: '+(error?.message||error));
-   }
+   if(!eligible(x))return;
+   b.disabled=true;const label=b.textContent;b.textContent='Sending…';
+   try{const out=await sendToOmni(x);alert(sentMessage(out));await refresh()}
+   catch(error){alert('Could not send to Omni Social: '+(error?.message||error));b.disabled=false;b.textContent=label}
    return;
   }
   if(b.dataset.action==='group'){
@@ -86,7 +79,9 @@ async function refresh(){
   const state={approve:'approved',review:'needs_changes',draft:'draft'}[b.dataset.action];if(!state)return;
   b.disabled=true;
   const {error}=await sb.from('inventory_items').update({listing_approval:state,listing_approved_at:state==='approved'?new Date().toISOString():null}).eq('id',x.id);
-  if(error){alert(error.message);b.disabled=false;return;}await refresh();
+  if(error){alert(error.message);b.disabled=false;return;}
+  if(state==='approved'&&eligible(x)){try{const out=await sendToOmni(x);alert(sentMessage(out))}catch(e){alert('Approved. Sending to Omni Social failed: '+(e?.message||e)+'. Use Send to Facebook Page to try again.')}}
+  await refresh();
  });
 }
 function download(){
@@ -95,5 +90,6 @@ function download(){
  const data=[head.map(csv).join(','),...rows.map(x=>[x.upc,x.listing_title||x.product_name,x.brand,x.category,x.condition_grade,x.listing_description||x.condition_notes,x.listing_price||x.suggested_price,x.available_qty,x.price_status].map(csv).join(','))].join('\r\n');
  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data],{type:'text/csv;charset=utf-8'}));a.download='StockBot-Approved-Facebook-Listings.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1500);
 }
+window.StockBotSendToOmni=sendToOmni;window.StockBotSentMessage=sentMessage;window.StockBotWritePost=writePost;
 document.addEventListener('click',e=>{if(e.target?.id==='listingRefresh')refresh();if(e.target?.id==='listingDownloadApproved')download();if(e.target?.dataset?.view==='exports')setTimeout(refresh,0);});
 })();

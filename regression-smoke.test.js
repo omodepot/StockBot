@@ -41,7 +41,9 @@ assert.match(dashboard,/Download Spreadsheet \(CSV\)/);
 assert.match(html,/downloadPhotoInventory/);
 assert.match(listings,/listing_approval!=='approved'/);
 assert.match(listings,/Send to Facebook Page \(Omni Social\)/);assert.match(listings,/data-action="group"/);
-assert.match(listings,/targetClientName:'Deal Drop MI'/);
+assert.match(listings,/stockbot-send-omni/,'listings are sent to Omni Social server to server');
+assert.match(html,/statusOverride==='ready_to_list'&&window\.StockBotSendToOmni/,'Ready to list sends to Omni Social');
+assert.match(html,/available_qty:\(isNew\?/,'saving an existing item must keep its sold count');
 assert.match(listings,/facebook\.com\/marketplace\/create\/item/);
 console.log('StockBot regression smoke tests passed');
 
@@ -58,7 +60,7 @@ assert.match(html,/<label>Product name<\/label><input id=pname/);
 assert.doesNotMatch(html,/isNew\?\$\('pname'\)/,'saved items must keep edited product names');
 assert.match(dashboard,/from\('sales'\)\.insert\(sale\)/,'dashboard sales must use the canonical sales table');
 assert.match(repair,/archiveItem/);assert.match(repair,/recorded sales/);
-assert.match(listings,/order\('sort_order'/);
+assert.match(read('supabase/functions/stockbot-send-omni/index.ts'),/order\("sort_order"/,'photos go to Omni Social main photo first');
 // Regex literals in plain .js/.html must not be double-escaped (\\D matches a backslash, not non-digits).
 for(const [name,src] of [['index.html',html],['dashboard',dashboard],['listings',listings],['manifest',manifest],['enhancements',enh]]){
  assert.doesNotMatch(src,/\/[^/\n]*\\\\[dDsSnr][^/\n]*\/[gimsuy]*[.,;)]/,name+' contains a double-escaped regex literal');
